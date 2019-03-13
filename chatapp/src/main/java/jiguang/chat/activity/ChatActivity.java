@@ -59,6 +59,7 @@ import jiguang.chat.adapter.ChattingListAdapter;
 import jiguang.chat.application.JGApplication;
 import jiguang.chat.entity.Event;
 import jiguang.chat.entity.EventType;
+import jiguang.chat.jmrtc.JMRTCActivity;
 import jiguang.chat.location.activity.MapPickerActivity;
 import jiguang.chat.model.Constants;
 import jiguang.chat.pickerimage.PickImageActivity;
@@ -306,7 +307,7 @@ public class ChatActivity extends BaseActivity implements FuncLayout.OnFuncKeyBo
     private void initEmoticonsKeyBoardBar() {
         ekBar.setAdapter(SimpleCommonUtils.getCommonAdapter(this, emoticonClickListener));
         ekBar.addOnFuncKeyBoardListener(this);
-        SimpleAppsGridView gridView = new SimpleAppsGridView(this);
+        SimpleAppsGridView gridView = new SimpleAppsGridView(this, mIsSingle);
         ekBar.addFuncView(gridView);
 
         ekBar.getEtChat().setOnSizeChangedListener(new EmoticonsEditText.OnSizeChangedListener() {
@@ -976,8 +977,20 @@ public class ChatActivity extends BaseActivity implements FuncLayout.OnFuncKeyBo
                 break;
             // TODO: 2019/3/12/012 语音和视频
             case JGApplication.TACK_VIDEO:
+                intent = new Intent(mContext, JMRTCActivity.class);
+                intent.putExtra("userId", mTargetId);
+                intent.putExtra("isVideo", true);
+                intent.putExtra("isLaunch", true);
+                intent.putExtra("nickName",mTitle);
+                startActivity(intent);
+                break;
             case JGApplication.TACK_VOICE:
-                ToastUtil.shortToast(mContext, "该功能正在添加中");
+                intent = new Intent(mContext, JMRTCActivity.class);
+                intent.putExtra("userId", mTargetId);
+                intent.putExtra("isVideo", false);
+                intent.putExtra("isLaunch", true);
+                intent.putExtra("nickName",mTitle);
+                startActivity(intent);
                 break;
             default:
                 break;

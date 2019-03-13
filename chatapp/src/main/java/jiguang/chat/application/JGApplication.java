@@ -1,7 +1,10 @@
 package jiguang.chat.application;
 
 import android.content.Context;
+import android.content.Intent;
 import android.support.multidex.MultiDex;
+import android.util.Log;
+import android.view.SurfaceView;
 
 import com.activeandroid.ActiveAndroid;
 import com.baidu.mapapi.SDKInitializer;
@@ -12,12 +15,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import cn.jiguang.jmrtc.api.JMRtcClient;
+import cn.jiguang.jmrtc.api.JMRtcListener;
+import cn.jiguang.jmrtc.api.JMRtcSession;
+import cn.jiguang.jmrtc.api.JMSignalingMessage;
 import cn.jpush.im.android.api.JMessageClient;
+import cn.jpush.im.android.api.callback.RequestCallback;
 import cn.jpush.im.android.api.model.GroupInfo;
 import cn.jpush.im.android.api.model.Message;
 import cn.jpush.im.android.api.model.UserInfo;
 import jiguang.chat.database.UserEntry;
 import jiguang.chat.entity.NotificationClickEventReceiver;
+import jiguang.chat.jmrtc.JMRTCActivity;
 import jiguang.chat.location.service.LocationService;
 import jiguang.chat.pickerimage.utils.StorageUtil;
 import jiguang.chat.utils.SharePreferenceManager;
@@ -131,6 +140,7 @@ public class JGApplication extends com.activeandroid.app.Application {
         JMessageClient.setNotificationFlag(JMessageClient.FLAG_NOTIFY_WITH_SOUND | JMessageClient.FLAG_NOTIFY_WITH_LED | JMessageClient.FLAG_NOTIFY_WITH_VIBRATE);
         //注册Notification点击的接收器
         new NotificationClickEventReceiver(getApplicationContext());
+        initJMRtcListener();
         initImagePicker();
 
     }
@@ -171,4 +181,86 @@ public class JGApplication extends com.activeandroid.app.Application {
         super.attachBaseContext(base);
         MultiDex.install(this);
     }
+
+    /**
+     * 监听通话邀请
+     */
+    public void initJMRtcListener() {
+        JMRtcClient.getInstance().initEngine(jmRtcListener);
+    }
+
+    private JMRtcListener jmRtcListener = new JMRtcListener() {
+        @Override
+        public void onEngineInitComplete(final int errCode, final String errDesc) {
+            super.onEngineInitComplete(errCode, errDesc);
+        }
+
+        @Override
+        public void onCallOutgoing(JMRtcSession callSession) {
+            super.onCallOutgoing(callSession);
+        }
+
+        @Override
+        public void onCallInviteReceived(JMRtcSession callSession) {
+            super.onCallInviteReceived(callSession);
+            //收到通话邀请
+            Log.e("mx", "onCallInviteReceived invoked!. session = " + callSession);
+            final boolean isVideo = callSession.getMediaType() == JMSignalingMessage.MediaType.VIDEO;
+            callSession.getInviterUserInfo(new RequestCallback<UserInfo>() {
+                @Override
+                public void gotResult(int i, String s, UserInfo userInfo) {
+                    Intent intent = new Intent(getApplicationContext(), JMRTCActivity.class);
+                    if (isVideo) {
+                        intent.putExtra("isVideo", true);
+                    } else {
+                        intent.putExtra("isVideo", false);
+                    }
+                    intent.putExtra("nickName", userInfo.getNickname());
+                    intent.putExtra("isLaunch", false);
+                    startActivity(intent);
+                }
+            });
+        }
+
+        @Override
+        public void onCallOtherUserInvited(UserInfo fromUserInfo, List<UserInfo> invitedUserInfos, JMRtcSession callSession) {
+            super.onCallOtherUserInvited(fromUserInfo, invitedUserInfos, callSession);
+        }
+
+        //主线程回调
+        @Override
+        public void onCallConnected(JMRtcSession callSession, SurfaceView localSurfaceView) {
+            super.onCallConnected(callSession, localSurfaceView);
+        }
+
+        //主线程回调
+        @Override
+        public void onCallMemberJoin(UserInfo joinedUserInfo, SurfaceView remoteSurfaceView) {
+            super.onCallMemberJoin(joinedUserInfo, remoteSurfaceView);
+        }
+
+        @Override
+        public void onPermissionNotGranted(final String[] requiredPermissions) {
+        }
+
+        @Override
+        public void onCallMemberOffline(final UserInfo leavedUserInfo, JMRtcClient.DisconnectReason reason) {
+            super.onCallMemberOffline(leavedUserInfo, reason);
+        }
+
+        @Override
+        public void onCallDisconnected(JMRtcClient.DisconnectReason reason) {
+            super.onCallDisconnected(reason);
+        }
+
+        @Override
+        public void onCallError(int errorCode, String desc) {
+            super.onCallError(errorCode, desc);
+        }
+
+        @Override
+        public void onRemoteVideoMuted(UserInfo remoteUser, boolean isMuted) {
+            super.onRemoteVideoMuted(remoteUser, isMuted);
+        }
+    };
 }

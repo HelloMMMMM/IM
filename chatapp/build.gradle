@@ -67,4 +67,5 @@ dependencies {
     compile 'com.contrarywind:Android-PickerView:3.2.4'
     compile 'cn.jiguang.sdk:jmessage:2.7.0'  // 此处以JMessage 2.7.0 版本为例。
     compile 'cn.jiguang.sdk:jcore:1.2.3'  // 此处以JCore 1.2.3 版本为例。
+    compile 'cn.jiguang.sdk:jmrtc:1.0.1' // 此处以jmrtc 1.0.2 版本为例
 }
