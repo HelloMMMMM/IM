@@ -10,6 +10,8 @@ import com.activeandroid.ActiveAndroid;
 import com.baidu.mapapi.SDKInitializer;
 import com.facebook.drawee.backends.pipeline.Fresco;
 
+import org.greenrobot.eventbus.EventBus;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -21,11 +23,13 @@ import cn.jiguang.jmrtc.api.JMRtcSession;
 import cn.jiguang.jmrtc.api.JMSignalingMessage;
 import cn.jpush.im.android.api.JMessageClient;
 import cn.jpush.im.android.api.callback.RequestCallback;
+import cn.jpush.im.android.api.event.LoginStateChangeEvent;
 import cn.jpush.im.android.api.model.GroupInfo;
 import cn.jpush.im.android.api.model.Message;
 import cn.jpush.im.android.api.model.UserInfo;
 import jiguang.chat.database.UserEntry;
 import jiguang.chat.entity.NotificationClickEventReceiver;
+import jiguang.chat.event.JMRTCEvent;
 import jiguang.chat.jmrtc.JMRTCActivity;
 import jiguang.chat.location.service.LocationService;
 import jiguang.chat.pickerimage.utils.StorageUtil;
@@ -187,6 +191,13 @@ public class JGApplication extends com.activeandroid.app.Application {
      */
     public void initJMRtcListener() {
         JMRtcClient.getInstance().initEngine(jmRtcListener);
+        initBaseSetting();
+    }
+
+    private void initBaseSetting() {
+        JMRtcClient.getInstance().setVideoProfile(JMRtcClient.VideoProfile.Profile_720P);
+        JMRtcClient.getInstance().enableAudio(true);
+        JMRtcClient.getInstance().enableSpeakerphone(true);
     }
 
     /**
@@ -205,13 +216,16 @@ public class JGApplication extends com.activeandroid.app.Application {
         @Override
         public void onCallOutgoing(JMRtcSession callSession) {
             super.onCallOutgoing(callSession);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(1);
+            jmrtcEvent.setCallSession(callSession);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         @Override
-        public void onCallInviteReceived(JMRtcSession callSession) {
+        public void onCallInviteReceived(final JMRtcSession callSession) {
             super.onCallInviteReceived(callSession);
             //收到通话邀请
-            Log.e("mx", "onCallInviteReceived invoked!. session = " + callSession);
+            Log.d("JMRTCActivity", "onCallInviteReceived invoked!. session = " + callSession);
             final boolean isVideo = callSession.getMediaType() == JMSignalingMessage.MediaType.VIDEO;
             callSession.getInviterUserInfo(new RequestCallback<UserInfo>() {
                 @Override
@@ -224,7 +238,12 @@ public class JGApplication extends com.activeandroid.app.Application {
                     }
                     intent.putExtra("nickName", userInfo.getNickname());
                     intent.putExtra("isLaunch", false);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
+
+                    JMRTCEvent jmrtcEvent = new JMRTCEvent(2);
+                    jmrtcEvent.setCallSession(callSession);
+                    EventBus.getDefault().post(jmrtcEvent);
                 }
             });
         }
@@ -232,42 +251,73 @@ public class JGApplication extends com.activeandroid.app.Application {
         @Override
         public void onCallOtherUserInvited(UserInfo fromUserInfo, List<UserInfo> invitedUserInfos, JMRtcSession callSession) {
             super.onCallOtherUserInvited(fromUserInfo, invitedUserInfos, callSession);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(3);
+            jmrtcEvent.setFromUserInfo(fromUserInfo);
+            jmrtcEvent.setInvitedUserInfos(invitedUserInfos);
+            jmrtcEvent.setCallSession(callSession);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         //主线程回调
         @Override
         public void onCallConnected(JMRtcSession callSession, SurfaceView localSurfaceView) {
             super.onCallConnected(callSession, localSurfaceView);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(4);
+            jmrtcEvent.setCallSession(callSession);
+            jmrtcEvent.setLocalSurfaceView(localSurfaceView);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         //主线程回调
         @Override
         public void onCallMemberJoin(UserInfo joinedUserInfo, SurfaceView remoteSurfaceView) {
             super.onCallMemberJoin(joinedUserInfo, remoteSurfaceView);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(5);
+            jmrtcEvent.setJoinedUserInfo(joinedUserInfo);
+            jmrtcEvent.setRemoteSurfaceView(remoteSurfaceView);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         @Override
         public void onPermissionNotGranted(final String[] requiredPermissions) {
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(6);
+            jmrtcEvent.setRequiredPermissions(requiredPermissions);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         @Override
         public void onCallMemberOffline(final UserInfo leavedUserInfo, JMRtcClient.DisconnectReason reason) {
             super.onCallMemberOffline(leavedUserInfo, reason);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(7);
+            jmrtcEvent.setLeavedUserInfo(leavedUserInfo);
+            jmrtcEvent.setReason(reason);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         @Override
         public void onCallDisconnected(JMRtcClient.DisconnectReason reason) {
             super.onCallDisconnected(reason);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(8);
+            jmrtcEvent.setReason(reason);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         @Override
         public void onCallError(int errorCode, String desc) {
             super.onCallError(errorCode, desc);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(9);
+            jmrtcEvent.setErrorCode(errorCode);
+            jmrtcEvent.setDesc(desc);
+            EventBus.getDefault().post(jmrtcEvent);
         }
 
         @Override
         public void onRemoteVideoMuted(UserInfo remoteUser, boolean isMuted) {
             super.onRemoteVideoMuted(remoteUser, isMuted);
+            JMRTCEvent jmrtcEvent = new JMRTCEvent(10);
+            jmrtcEvent.setRemoteUser(remoteUser);
+            jmrtcEvent.setMuted(isMuted);
+            EventBus.getDefault().post(jmrtcEvent);
         }
     };
 }

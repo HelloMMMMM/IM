@@ -15,6 +15,9 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -28,6 +31,8 @@ import cn.jpush.im.android.api.model.UserInfo;
 import cn.jpush.im.api.BasicCallback;
 import jiguang.chat.R;
 import jiguang.chat.application.JGApplication;
+import jiguang.chat.event.Event;
+import jiguang.chat.event.JMRTCEvent;
 import jiguang.chat.utils.AndroidUtils;
 import jiguang.chat.utils.MediaPlayerUtil;
 import jiguang.chat.utils.ToastUtil;
@@ -50,8 +55,8 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
     private boolean isVideo;
     private ImageView accept, refuse, hangup;
     private TextView tip;
-    private boolean isAccept = false;
     private boolean isLaunch; //是否是发起方
+    private boolean isRefuse;
     private Handler handler;
 
     @Override
@@ -76,13 +81,24 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
         refuse.setOnClickListener(this);
         hangup.setOnClickListener(this);
 
-        //先释放外部音视频监听
-        JGApplication jgApplication = (JGApplication) getApplication();
-        jgApplication.releaseJMRtcListener();
         //再次初始化
         acceptBefore();
-        JMRtcClient.getInstance().initEngine(jmRtcListener);
-        initBaseSetting();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (!EventBus.getDefault().isRegistered(this)) {
+            EventBus.getDefault().register(this);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (EventBus.getDefault().isRegistered(this)) {
+            EventBus.getDefault().unregister(this);
+        }
     }
 
     @Override
@@ -122,23 +138,17 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
     @Override
     public void finish() {
         super.finish();
-        if (isAccept) {
-            hangUp();
-        } else {
+        if (isRefuse) {
             refuseCall();
+        } else {
+            hangUp();
         }
         handler.removeCallbacksAndMessages(null);
-        //释放内部音视频
-        JMRtcClient.getInstance().releaseEngine();
-        //绑定外部音视频监听
-        JGApplication jgApplication = (JGApplication) getApplication();
-        jgApplication.initJMRtcListener();
         closeHintMedia();
     }
 
     private void openHintMedia() {
-
-        VibrateUtil.vibrate(this, new long[]{300, 1000}, 1);
+        VibrateUtil.vibrate(this, new long[]{0, 1000, 500, 1000}, 2);
         MediaPlayerUtil.playRing(this);
     }
 
@@ -167,20 +177,14 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
         hangup.setVisibility(View.VISIBLE);
     }
 
-    private void initBaseSetting() {
-        JMRtcClient.getInstance().setVideoProfile(JMRtcClient.VideoProfile.Profile_480P);
-        JMRtcClient.getInstance().enableAudio(true);
-        JMRtcClient.getInstance().enableSpeakerphone(true);
-    }
-
     @Override
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.btn_accept:
-                isAccept = true;
                 acceptCall();
                 break;
             case R.id.btn_refuse:
+                isRefuse = true;
                 finish();
                 break;
             case R.id.btn_hangup:
@@ -256,144 +260,147 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
         });
     }
 
-    JMRtcListener jmRtcListener = new JMRtcListener() {
-        @Override
-        public void onEngineInitComplete(final int errCode, final String errDesc) {
-            super.onEngineInitComplete(errCode, errDesc);
-            runOnUiThread(new Runnable() {
+    @Subscribe
+    public void onEvent(Event event) {
+        if (event instanceof JMRTCEvent) {
+            JMRTCEvent jmrtcEvent = (JMRTCEvent) event;
+            switch (jmrtcEvent.getType()) {
+                case 1:
+                    onCallOutgoing(jmrtcEvent.getCallSession());
+                    break;
+                case 2:
+                    onCallInviteReceived(jmrtcEvent.getCallSession());
+                    break;
+                case 3:
+                    onCallOtherUserInvited(jmrtcEvent.getFromUserInfo(), jmrtcEvent.getInvitedUserInfos(), jmrtcEvent.getCallSession());
+                    break;
+                case 4:
+                    onCallConnected(jmrtcEvent.getCallSession(), jmrtcEvent.getLocalSurfaceView());
+                    break;
+                case 5:
+                    onCallMemberJoin(jmrtcEvent.getJoinedUserInfo(), jmrtcEvent.getRemoteSurfaceView());
+                    break;
+                case 6:
+                    onPermissionNotGranted(jmrtcEvent.getRequiredPermissions());
+                    break;
+                case 7:
+                    onCallMemberOffline(jmrtcEvent.getLeavedUserInfo(), jmrtcEvent.getReason());
+                    break;
+                case 8:
+                    onCallDisconnected(jmrtcEvent.getReason());
+                    break;
+                case 9:
+                    onCallError(jmrtcEvent.getErrorCode(), jmrtcEvent.getDesc());
+                    break;
+                case 10:
+                    onRemoteVideoMuted(jmrtcEvent.getRemoteUser(), jmrtcEvent.isMuted());
+                    break;
+            }
+        }
+    }
+
+    private void onCallOutgoing(JMRtcSession callSession) {
+        Log.d(TAG, "onCallOutgoing invoked!. session = " + callSession);
+        session = callSession;
+    }
+
+    private void onCallInviteReceived(JMRtcSession callSession) {
+        Log.d(TAG, "onCallInviteReceived invoked!. session = " + callSession);
+        session = callSession;
+    }
+
+    private void onCallOtherUserInvited(UserInfo fromUserInfo, List<UserInfo> invitedUserInfos, JMRtcSession callSession) {
+        Log.d(TAG, "onCallOtherUserInvited invoked!. session = " + callSession + " from user = " + fromUserInfo + " invited user = " + invitedUserInfos);
+        session = callSession;
+    }
+
+    private void onCallConnected(JMRtcSession callSession, SurfaceView localSurfaceView) {
+        Log.d(TAG, "onCallConnected invoked!. session = " + callSession + " localSerfaceView = " + localSurfaceView);
+        if (isVideo) {
+            tip.setVisibility(View.GONE);
+            contentLayout.setVisibility(View.VISIBLE);
+            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(350, 600, Gravity.RIGHT);
+            localSurfaceView.setLayoutParams(layoutParams);
+            surfaceViewCache.append(myinfo.getUserID(), localSurfaceView);
+            surfaceViewContainer.addView(localSurfaceView);
+        } else {
+            tip.setText(String.format("正与%s通话中...", nickName));
+        }
+        acceptAfter();
+        session = callSession;
+    }
+
+    private void onCallMemberJoin(UserInfo joinedUserInfo, SurfaceView remoteSurfaceView) {
+        Log.d(TAG, "onCallMemberJoin invoked!. joined user  = " + joinedUserInfo + " remoteSerfaceView = " + remoteSurfaceView);
+        if (isVideo) {
+            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            remoteSurfaceView.setLayoutParams(layoutParams);
+            surfaceViewCache.append(joinedUserInfo.getUserID(), remoteSurfaceView);
+            surfaceViewContainer.addView(remoteSurfaceView);
+        }
+    }
+
+    private void onPermissionNotGranted(String[] requiredPermissions) {
+        Log.d(TAG, "[onPermissionNotGranted] permission = " + requiredPermissions.length);
+        try {
+            AndroidUtils.requestPermission(JMRTCActivity.this, requiredPermissions);
+            requestPermissionSended = true;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void onCallMemberOffline(final UserInfo leavedUserInfo, JMRtcClient.DisconnectReason reason) {
+        Log.d(TAG, "onCallMemberOffline invoked!. leave user = " + leavedUserInfo + " reason = " + reason);
+        if (isVideo) {
+            surfaceViewContainer.post(new Runnable() {
                 @Override
                 public void run() {
-                    //Toast.makeText(getApplicationContext(), "音视频引擎初始化完成。 errCode = " + errCode + " err Desc = " + errDesc, Toast.LENGTH_LONG).show();
+                    SurfaceView cachedSurfaceView = surfaceViewCache.get(leavedUserInfo.getUserID());
+                    if (null != cachedSurfaceView) {
+                        surfaceViewCache.remove(leavedUserInfo.getUserID());
+                        surfaceViewContainer.removeView(cachedSurfaceView);
+                    }
                 }
             });
-
         }
-
-        @Override
-        public void onCallOutgoing(JMRtcSession callSession) {
-            super.onCallOutgoing(callSession);
-            Log.d(TAG, "onCallOutgoing invoked!. session = " + callSession);
-            session = callSession;
-        }
-
-        @Override
-        public void onCallInviteReceived(JMRtcSession callSession) {
-            super.onCallInviteReceived(callSession);
-            Log.d(TAG, "onCallInviteReceived invoked!. session = " + callSession);
-            session = callSession;
-        }
-
-        @Override
-        public void onCallOtherUserInvited(UserInfo fromUserInfo, List<UserInfo> invitedUserInfos, JMRtcSession callSession) {
-            super.onCallOtherUserInvited(fromUserInfo, invitedUserInfos, callSession);
-            Log.d(TAG, "onCallOtherUserInvited invoked!. session = " + callSession + " from user = " + fromUserInfo + " invited user = " + invitedUserInfos);
-            session = callSession;
-        }
-
-        //主线程回调
-        @Override
-        public void onCallConnected(JMRtcSession callSession, SurfaceView localSurfaceView) {
-            super.onCallConnected(callSession, localSurfaceView);
-            Log.d(TAG, "onCallConnected invoked!. session = " + callSession + " localSerfaceView = " + localSurfaceView);
-            if (isVideo) {
-                tip.setVisibility(View.GONE);
-                contentLayout.setVisibility(View.VISIBLE);
-                FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(300, 400, Gravity.RIGHT);
-                localSurfaceView.setLayoutParams(layoutParams);
-                surfaceViewCache.append(myinfo.getUserID(), localSurfaceView);
-                surfaceViewContainer.addView(localSurfaceView);
-            } else {
-                tip.setText(String.format("正与%s通话中...", nickName));
+        ToastUtil.shortToast(JMRTCActivity.this, "对方已挂断");
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                finish();
             }
-            acceptAfter();
-            session = callSession;
-        }
+        }, 1000);
+    }
 
-        //主线程回调
-        @Override
-        public void onCallMemberJoin(UserInfo joinedUserInfo, SurfaceView remoteSurfaceView) {
-            super.onCallMemberJoin(joinedUserInfo, remoteSurfaceView);
-            Log.d(TAG, "onCallMemberJoin invoked!. joined user  = " + joinedUserInfo + " remoteSerfaceView = " + remoteSurfaceView);
-            if (isVideo) {
-                FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-                remoteSurfaceView.setLayoutParams(layoutParams);
-                surfaceViewCache.append(joinedUserInfo.getUserID(), remoteSurfaceView);
-                surfaceViewContainer.addView(remoteSurfaceView);
-            }
-        }
-
-        @Override
-        public void onPermissionNotGranted(final String[] requiredPermissions) {
-            Log.d(TAG, "[onPermissionNotGranted] permission = " + requiredPermissions.length);
-            try {
-                AndroidUtils.requestPermission(JMRTCActivity.this, requiredPermissions);
-                requestPermissionSended = true;
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        @Override
-        public void onCallMemberOffline(final UserInfo leavedUserInfo, JMRtcClient.DisconnectReason reason) {
-            super.onCallMemberOffline(leavedUserInfo, reason);
-            Log.d(TAG, "onCallMemberOffline invoked!. leave user = " + leavedUserInfo + " reason = " + reason);
-            if (isVideo) {
-                surfaceViewContainer.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        SurfaceView cachedSurfaceView = surfaceViewCache.get(leavedUserInfo.getUserID());
-                        if (null != cachedSurfaceView) {
-                            surfaceViewCache.remove(leavedUserInfo.getUserID());
-                            surfaceViewContainer.removeView(cachedSurfaceView);
-                        }
-                    }
-                });
-            }
-            ToastUtil.shortToast(JMRTCActivity.this, "对方已挂断");
-            handler.postDelayed(new Runnable() {
+    private void onCallDisconnected(JMRtcClient.DisconnectReason reason) {
+        Log.d(TAG, "onCallDisconnected invoked!. reason = " + reason);
+        if (isVideo) {
+            surfaceViewContainer.post(new Runnable() {
                 @Override
                 public void run() {
-                    finish();
+                    surfaceViewCache.clear();
+                    surfaceViewContainer.removeAllViews();
                 }
-            }, 1000);
+            });
         }
+        session = null;
+    }
 
-        @Override
-        public void onCallDisconnected(JMRtcClient.DisconnectReason reason) {
-            super.onCallDisconnected(reason);
-            Log.d(TAG, "onCallDisconnected invoked!. reason = " + reason);
-            if (isVideo) {
-                surfaceViewContainer.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        surfaceViewCache.clear();
-                        surfaceViewContainer.removeAllViews();
-                    }
-                });
+    private void onCallError(int errorCode, String desc) {
+        Log.d(TAG, "onCallError invoked!. errCode = " + errorCode + " desc = " + desc);
+        session = null;
+        finish();
+    }
+
+    private void onRemoteVideoMuted(UserInfo remoteUser, boolean isMuted) {
+        Log.d(TAG, "onRemoteVideoMuted invoked!. remote user = " + remoteUser + " isMuted = " + isMuted);
+        if (isVideo) {
+            SurfaceView remoteSurfaceView = surfaceViewCache.get(remoteUser.getUserID());
+            if (null != remoteSurfaceView) {
+                remoteSurfaceView.setVisibility(isMuted ? View.GONE : View.VISIBLE);
             }
-            finish();
-            session = null;
         }
-
-        @Override
-        public void onCallError(int errorCode, String desc) {
-            super.onCallError(errorCode, desc);
-            Log.d(TAG, "onCallError invoked!. errCode = " + errorCode + " desc = " + desc);
-            session = null;
-            finish();
-        }
-
-        @Override
-        public void onRemoteVideoMuted(UserInfo remoteUser, boolean isMuted) {
-            super.onRemoteVideoMuted(remoteUser, isMuted);
-            Log.d(TAG, "onRemoteVideoMuted invoked!. remote user = " + remoteUser + " isMuted = " + isMuted);
-            if (isVideo) {
-                SurfaceView remoteSurfaceView = surfaceViewCache.get(remoteUser.getUserID());
-                if (null != remoteSurfaceView) {
-                    remoteSurfaceView.setVisibility(isMuted ? View.GONE : View.VISIBLE);
-                }
-            }
-            finish();
-        }
-    };
+        finish();
+    }
 }
