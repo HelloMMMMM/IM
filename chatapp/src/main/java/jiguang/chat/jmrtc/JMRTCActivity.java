@@ -76,11 +76,11 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
         refuse.setOnClickListener(this);
         hangup.setOnClickListener(this);
 
-        acceptBefore();
         //先释放外部音视频监听
         JGApplication jgApplication = (JGApplication) getApplication();
         jgApplication.releaseJMRtcListener();
         //再次初始化
+        acceptBefore();
         JMRtcClient.getInstance().initEngine(jmRtcListener);
         initBaseSetting();
     }
@@ -137,7 +137,8 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
     }
 
     private void openHintMedia() {
-        VibrateUtil.vibrate(this, new long[]{0, 500, 500, 500}, 2);
+
+        VibrateUtil.vibrate(this, new long[]{300, 1000}, 1);
         MediaPlayerUtil.playRing(this);
     }
 
