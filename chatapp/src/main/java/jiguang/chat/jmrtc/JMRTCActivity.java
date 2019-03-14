@@ -29,7 +29,9 @@ import cn.jpush.im.api.BasicCallback;
 import jiguang.chat.R;
 import jiguang.chat.application.JGApplication;
 import jiguang.chat.utils.AndroidUtils;
+import jiguang.chat.utils.MediaPlayerUtil;
 import jiguang.chat.utils.ToastUtil;
+import jiguang.chat.utils.VibrateUtil;
 
 public class JMRTCActivity extends Activity implements View.OnClickListener {
 
@@ -75,6 +77,10 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
         hangup.setOnClickListener(this);
 
         acceptBefore();
+        //先释放外部音视频监听
+        JGApplication jgApplication = (JGApplication) getApplication();
+        jgApplication.releaseJMRtcListener();
+        //再次初始化
         JMRtcClient.getInstance().initEngine(jmRtcListener);
         initBaseSetting();
     }
@@ -105,7 +111,9 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
                     }
                 }, 300 * 1000);
             } else {
+                //接受方
                 tip.setText(String.format("%s正在等待接听...", nickName));
+                openHintMedia();
             }
         }
         requestPermissionSended = false;
@@ -120,9 +128,24 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
             refuseCall();
         }
         handler.removeCallbacksAndMessages(null);
+        //释放内部音视频
         JMRtcClient.getInstance().releaseEngine();
+        //绑定外部音视频监听
         JGApplication jgApplication = (JGApplication) getApplication();
         jgApplication.initJMRtcListener();
+        closeHintMedia();
+    }
+
+    private void openHintMedia() {
+        VibrateUtil.vibrate(this, new long[]{0, 500, 500, 500}, 2);
+        MediaPlayerUtil.playRing(this);
+    }
+
+    private void closeHintMedia() {
+        if (!isLaunch) {
+            VibrateUtil.virateCancle(this);
+            MediaPlayerUtil.stopRing();
+        }
     }
 
     private void acceptBefore() {
@@ -211,6 +234,7 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
                 Log.d(TAG, "accept call!. code = " + responseCode + " msg = " + responseMessage);
             }
         });
+        closeHintMedia();
     }
 
     private void refuseCall() {
@@ -261,8 +285,7 @@ public class JMRTCActivity extends Activity implements View.OnClickListener {
         @Override
         public void onCallOtherUserInvited(UserInfo fromUserInfo, List<UserInfo> invitedUserInfos, JMRtcSession callSession) {
             super.onCallOtherUserInvited(fromUserInfo, invitedUserInfos, callSession);
-            Log.d(TAG, "onCallOtherUserInvited invoked!. session = " + callSession + " from user = " + fromUserInfo
-                    + " invited user = " + invitedUserInfos);
+            Log.d(TAG, "onCallOtherUserInvited invoked!. session = " + callSession + " from user = " + fromUserInfo + " invited user = " + invitedUserInfos);
             session = callSession;
         }
 

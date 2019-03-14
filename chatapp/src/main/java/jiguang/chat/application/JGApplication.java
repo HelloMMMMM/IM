@@ -189,6 +189,13 @@ public class JGApplication extends com.activeandroid.app.Application {
         JMRtcClient.getInstance().initEngine(jmRtcListener);
     }
 
+    /**
+     * 释放音视频
+     */
+    public void releaseJMRtcListener() {
+        JMRtcClient.getInstance().releaseEngine();
+    }
+
     private JMRtcListener jmRtcListener = new JMRtcListener() {
         @Override
         public void onEngineInitComplete(final int errCode, final String errDesc) {
